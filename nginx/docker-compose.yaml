@@ -4,36 +4,69 @@ networks:
     driver: bridge
 
 services:
-  nginx-proxy:
-    image: jwilder/nginx-proxy:0.6.0
-    restart: always
+  traefik:
+    image: "traefik:v2.0.1"
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --providers.docker
+      - --api.insecure
+      - --certificatesresolvers.leresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+      - --certificatesresolvers.leresolver.acme.email=pichones.corp@gmail.com
+      - --certificatesresolvers.leresolver.acme.storage=/acme.json
+      - --certificatesresolvers.leresolver.acme.tlschallenge=true
     ports:
       - "80:80"
       - "443:443"
+      - "4080:8080"
     volumes:
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-      - certs:/etc/nginx/certs:ro
-      - confd:/etc/nginx/conf.d
-      - vhostd:/etc/nginx/vhost.d
-      - html:/usr/share/nginx/html
-    labels:
-      - com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./acme.json:/acme.json"
     networks:
-      - bridge
+       - bridge
 
-  letsencrypt:
-    image: jrcs/letsencrypt-nginx-proxy-companion:v1.12
-    restart: always
+  my-app:
+    image: "xwiki:lts-postgres-tomcat"
+    container_name: xwiki-postgres-tomcat-web
+    depends_on:
+      - db
+    expose: 
+      - "8080"
+    environment:
+      - DB_USER=xwiki
+      - DB_PASSWORD=xwiki
+      - DB_HOST=xwiki-postgres-db
     volumes:
-      - certs:/etc/nginx/certs:rw
-      - confd:/etc/nginx/conf.d
-      - vhostd:/etc/nginx/vhost.d
-      - html:/usr/share/nginx/html
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - xwiki-data:/usr/local/xwiki
     networks:
       - bridge
+    
+    labels:
+      - "traefik.http.routers.my-app.rule=Host(`post.pichonescorp.com/`)"
+      - "traefik.http.routers.my-app.middlewares=auth"
+      - "traefik.http.routers.my-app.entrypoints=websecure"
+      - "traefik.http.routers.my-app.tls.certresolver=leresolver"
+      - "traefik.http.middlewares.auth.basicauth.users=user:$$apr1$$q8eZFHjF$$Fvmkk//V6Btlaf2i/ju5n/" # user/password
+  db:
+    image: "postgres:9.5"
+    container_name: xwiki-postgres-db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_ROOT_PASSWORD=xwiki
+      - POSTGRES_PASSWORD=xwiki
+      - POSTGRES_USER=xwiki
+      - POSTGRES_DB=xwiki
+      - POSTGRES_INITDB_ARGS="--encoding=UTF8"
+    networks:
+      - bridge
+    
 volumes:
-  certs:
-  confd:
-  vhostd:
-  html:
+  postgres-data: {}
+  xwiki-data: {}
+
+# Dashboard (https://localhost:8080)
+# Route
+# Basic auth (login: user | password: password)
+# Let's Encrypt (https://whoami.docker.localhost/)
+# touch acme.json; chmod 600 acme.json
