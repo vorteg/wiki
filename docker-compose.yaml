@@ -32,6 +32,8 @@ services:
       - db
     expose: 
       - "8080"
+    command: 
+      - --port=8080
     environment:
       - DB_USER=xwiki
       - DB_PASSWORD=xwiki
@@ -43,6 +45,7 @@ services:
     
     labels:
       - "traefik.http.routers.my-app.rule=Host(`post.pichonescorp.com/`)"
+      - "traefik.http.services.my-app.loadbalancer.server.port=8080"
       - "traefik.http.routers.my-app.middlewares=auth"
       - "traefik.http.routers.my-app.entrypoints=websecure"
       - "traefik.http.routers.my-app.tls.certresolver=leresolver"
